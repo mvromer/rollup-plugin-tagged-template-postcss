@@ -1,5 +1,5 @@
 import { createFilter } from '@rollup/pluginutils';
-import * as walk from 'acorn-walk';
+import { simple as simpleWalk } from 'acorn-walk';
 
 /**
  * Options used to configure rollup-plugin-tagged-template-postcss.
@@ -54,8 +54,9 @@ const taggedTemplatePostCss = (options = {}) => {
       /** @type {TemplateLiteralTransform[]} */
       const templateLiteralTransforms = [];
       const ast = this.parse(code);
+      const baseWalker = undefined;
 
-      walk.simple(ast, {
+      simpleWalk(ast, {
         TaggedTemplateExpression(node, transforms) {
           if (tags.includes(node.tag.name)) {
             // NOTE: Offset the start/end by +/-1 because we don't want to include the backtick
@@ -76,7 +77,7 @@ const taggedTemplatePostCss = (options = {}) => {
             transforms.push(transform);
           }
         }
-      }, undefined, templateLiteralTransforms);
+      }, baseWalker, templateLiteralTransforms);
 
       // XXX: Run replacements over code.
       for (const transform of templateLiteralTransforms) {
