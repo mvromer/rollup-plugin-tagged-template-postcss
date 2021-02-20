@@ -1,5 +1,7 @@
 import { createFilter } from '@rollup/pluginutils';
 import { simple as simpleWalk } from 'acorn-walk';
+import { Ranges } from 'ranges-push';
+import { rApply as applyRanges } from 'ranges-apply';
 
 /**
  * Options used to configure rollup-plugin-tagged-template-postcss.
@@ -10,14 +12,6 @@ import { simple as simpleWalk } from 'acorn-walk';
  * @property {string[]} exclude - List of patterns of sources file exclude from processing.
  * @property {string[]} tags - List of tagged template literal names whose contents will be
  * transformed using PostCSS.
- */
-
-/**
- * @typedef TemplateLiteralTransform
- * @property {number} start - Code offset to the start of the template literal to replace.
- * @property {number} end - Code offset to one past the end of the template literal to replace.
- * @property {string} transformedLiteral - Content to use when replacing the template literal
- * content located in the code offset range [start, end).
  */
 
 /**
@@ -51,13 +45,12 @@ const taggedTemplatePostCss = (options = {}) => {
       //   6. After walking the AST, process each triple and replace the template literal from
       //      [start, end) with the corresponding transformed output.
 
-      /** @type {TemplateLiteralTransform[]} */
-      const templateLiteralTransforms = [];
+      const transformRanges = new Ranges();
       const ast = this.parse(code);
       const baseWalker = undefined;
 
       simpleWalk(ast, {
-        TaggedTemplateExpression(node, transforms) {
+        TaggedTemplateExpression(node, ranges) {
           if (tags.includes(node.tag.name)) {
             // NOTE: Offset the start/end by +/-1 because we don't want to include the backtick
             // characters when we extract the template literal's contents.
@@ -68,24 +61,13 @@ const taggedTemplatePostCss = (options = {}) => {
             // XXX: Run PostCSS
             const transformedLiteral = originalLiteral;
 
-            const transform = {
-              start: literalStart,
-              end: literalEnd,
-              transformedLiteral
-            };
-
-            transforms.push(transform);
+            ranges.push(literalStart, literalEnd, transformedLiteral);
           }
         }
-      }, baseWalker, templateLiteralTransforms);
-
-      // XXX: Run replacements over code.
-      for (const transform of templateLiteralTransforms) {
-        console.log(transform);
-      }
+      }, baseWalker, transformRanges);
 
       return {
-        code: code,
+        code: applyRanges(code, transformRanges.current()),
         map: null
       };
     }

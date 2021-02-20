@@ -23,7 +23,9 @@
   "homepage": "https://github.com/mvromer/rollup-plugin-tagged-template-postcss#readme",
   "dependencies": {
     "@rollup/pluginutils": "^4.1.0",
-    "acorn-walk": "^8.0.2"
+    "acorn-walk": "^8.0.2",
+    "ranges-apply": "^5.0.5",
+    "ranges-push": "^5.0.5"
   },
   "devDependencies": {
     "rollup": "^2.39.0"
