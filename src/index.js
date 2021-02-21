@@ -1,7 +1,31 @@
 import { createFilter } from '@rollup/pluginutils';
 import { simple as simpleWalk } from 'acorn-walk';
+import postcss from 'postcss';
 import { Ranges } from 'ranges-push';
 import { rApply as applyRanges } from 'ranges-apply';
+
+/**
+ * PostCSS config object. Mirrors what you'd put in a postcss.config.js file. The `to`, `from`, and
+ * `map` PostCSS options will be ignored.
+ *
+ * @typedef PostcssConfig
+ *
+ * @property {(string|import('postcss').Syntax|import('postcss').Parser)} [parser] - PostCSS parser
+ * used to generate AST from a string. If a string is given, then postcss-load-config will require()
+ * the parser and pass along the returned instance.
+ *
+ * @property {(string|import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] - PostCSS
+ * stringifier used to generate a string from an AST. If a string is given, then postcss-load-config
+ * will require() the stringifier and pass along the returned instance.
+ *
+ * @property {(string|import('postcss').Syntax)} [syntax] - PostCSS object that can both parse and
+ * stringify. If a string is given, the postcss-load-config will require() the syntax and pass along
+ * the returned instance.
+ *
+ * @property {(object|import('postcss').AcceptedPlugin[])} [plugins] - PostCSS plugins to use. This
+ * can either be an object or an array of plugins as described by postcss-load-config
+ * [here](https://github.com/postcss/postcss-load-config#plugins).
+ */
 
 /**
  * Options used to configure rollup-plugin-tagged-template-postcss.
@@ -9,13 +33,19 @@ import { rApply as applyRanges } from 'ranges-apply';
  * @typedef TaggedTemplatePostcssOptions
  *
  * @property {string[]} include - List of patterns of source files to process.
+ *
  * @property {string[]} exclude - List of patterns of sources file exclude from processing.
+ *
  * @property {string[]} tags - List of tagged template literal names whose contents will be
  * transformed using PostCSS.
+ *
+ * @property {PostcssConfig} [postcss] - PostCSS config used to transform the contents of the
+ * tagged template literals specified by `tags`. If not given, this will use the PostCSS config in
+ * one of the locations supported by postcss-load-config.
  */
 
 /**
- * @type {import('rollup').PluginImpl<TaggedTemplatePostcssOptions>}
+ * @type {import('rollup').PluginImpl<(TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[])>}
  */
 const taggedTemplatePostCss = (options = {}) => {
   const filter = createFilter(options.include, options.exclude);
@@ -28,37 +58,21 @@ const taggedTemplatePostCss = (options = {}) => {
         return;
       }
 
-      const {
-        tags = []
-      } = options;
-
-      // General idea:
-      //   1. Find all TaggedTemplateExpression (TTE) nodes
-      //   2. Verify TTE node has tag with name matching one of options[].tags
-      //   3. Extract template literal by taking substring of input code from
-      //      start = tteNode.quasi.start + 1 to end = tteNode.quasi.end - 1. The +/-1 is to trim
-      //      the backtick characters from the extracted code substring.
-      //   4. Process the template literal contents through PostCSS using the corresponding
-      //      options[].postcssConfig.
-      //   5. Save in the state a (templateStart, templateEnd, transformedTemplate) triple using the
-      //      computed start, end, and transformed output returned by PostCSS.
-      //   6. After walking the AST, process each triple and replace the template literal from
-      //      [start, end) with the corresponding transformed output.
-
+      const optionsMap = makeOptionsMap(options);
       const transformRanges = new Ranges();
       const ast = this.parse(code);
       const baseWalker = undefined;
 
       simpleWalk(ast, {
         TaggedTemplateExpression(node, ranges) {
-          if (tags.includes(node.tag.name)) {
+          if (optionsMap.has(node.tag.name)) {
             // NOTE: Offset the start/end by +/-1 because we don't want to include the backtick
             // characters when we extract the template literal's contents.
             const literalStart = node.quasi.start + 1;
             const literalEnd = node.quasi.end - 1;
             const originalLiteral = code.substring(literalStart, literalEnd);
 
-            // XXX: Run PostCSS
+            // XXX: Get options from map or load if they don't exist. Pass to PostCSS.
             const transformedLiteral = originalLiteral;
 
             ranges.push(literalStart, literalEnd, transformedLiteral);
@@ -73,5 +87,43 @@ const taggedTemplatePostCss = (options = {}) => {
     }
   };
 }
+
+/**
+ * Create a map from tagged template literal name to the {@link PostcssConfig} object used to
+ * transform that template literal's contents.
+ *
+ * @param {TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[]} pluginOptions - Plugin
+ * options object received.
+ *
+ * @returns {Map<string, PostcssConfig>}
+ */
+const makeOptionsMap = (pluginOptions) => {
+  if (!Array.isArray(pluginOptions)) {
+    pluginOptions = [pluginOptions];
+  }
+
+  const optionsMap = new Map();
+
+  for (const optionsObj of pluginOptions) {
+    // XXX: actually load PostCSS config here via postcss-load-config. This way we can cache it
+    // and not continuously reload the config during the source walk.
+    //
+    // For inline config, would like to run it also through postcss-load-config. Unfortunately, it
+    // doesn't know how to load from in-memory structure. Maybe use serialize-to-js to write the
+    // inline config as a js file that can be loaded from file system?
+    const postcssConfig = optionsObj.postcss;
+
+    // Expand out for each tagged template literal name given in the current options instance.
+    for (const tag of optionsObj.tags) {
+      if (optionsMap.has(tag)) {
+        throw new Error(`PostCSS config already defined for tagged template literal ${tag}`);
+      }
+
+      optionsMap.set(tag, postcssConfig);
+    }
+  }
+
+  return optionsMap;
+};
 
 export default taggedTemplatePostCss;
