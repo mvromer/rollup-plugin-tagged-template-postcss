@@ -1,8 +1,11 @@
-import { createFilter } from '@rollup/pluginutils';
 import { simple as simpleWalk } from 'acorn-walk';
+import { pick } from 'lodash-es';
 import postcss from 'postcss';
+import postcssrc from 'postcss-load-config';
 import { Ranges } from 'ranges-push';
 import { rApply as applyRanges } from 'ranges-apply';
+import { createFilter } from '@rollup/pluginutils';
+import TraceError from 'trace-error';
 
 /**
  * PostCSS config object. Mirrors what you'd put in a postcss.config.js file. The `to`, `from`, and
@@ -10,21 +13,16 @@ import { rApply as applyRanges } from 'ranges-apply';
  *
  * @typedef PostcssConfig
  *
- * @property {(string|import('postcss').Syntax|import('postcss').Parser)} [parser] - PostCSS parser
- * used to generate AST from a string. If a string is given, then postcss-load-config will require()
- * the parser and pass along the returned instance.
+ * @property {(import('postcss').Syntax|import('postcss').Parser)} [parser] - PostCSS parser
+ * used to generate AST from a string.
  *
- * @property {(string|import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] - PostCSS
- * stringifier used to generate a string from an AST. If a string is given, then postcss-load-config
- * will require() the stringifier and pass along the returned instance.
+ * @property {(import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] - PostCSS
+ * stringifier used to generate a string from an AST.
  *
- * @property {(string|import('postcss').Syntax)} [syntax] - PostCSS object that can both parse and
- * stringify. If a string is given, the postcss-load-config will require() the syntax and pass along
- * the returned instance.
+ * @property {(import('postcss').Syntax)} [syntax] - Syntax object defining both a parser and
+ * stringifier for PostCSS to use.
  *
- * @property {(object|import('postcss').AcceptedPlugin[])} [plugins] - PostCSS plugins to use. This
- * can either be an object or an array of plugins as described by postcss-load-config
- * [here](https://github.com/postcss/postcss-load-config#plugins).
+ * @property {(import('postcss').AcceptedPlugin[])} [plugins] - PostCSS plugins to use.
  */
 
 /**
@@ -40,8 +38,9 @@ import { rApply as applyRanges } from 'ranges-apply';
  * transformed using PostCSS.
  *
  * @property {PostcssConfig} [postcss] - PostCSS config used to transform the contents of the
- * tagged template literals specified by `tags`. If not given, this will use the PostCSS config in
- * one of the locations supported by postcss-load-config.
+ * tagged template literals specified by `tags`. If not given, this will use
+ * [postcss-load-config](https://github.com/postcss/postcss-load-config#readme) to load a PostCSS
+ * config from one of its supported locations.
  */
 
 /**
@@ -53,12 +52,12 @@ const taggedTemplatePostCss = (options = {}) => {
   return {
     name: 'tagged-template-postcss',
 
-    transform(code, id) {
+    async transform(code, id) {
       if (!filter(id)) {
         return;
       }
 
-      const optionsMap = makeOptionsMap(options);
+      const optionsMap = await makeOptionsMap(options);
       const transformRanges = new Ranges();
       const ast = this.parse(code);
       const baseWalker = undefined;
@@ -74,6 +73,7 @@ const taggedTemplatePostCss = (options = {}) => {
 
             // XXX: Get options from map or load if they don't exist. Pass to PostCSS.
             const transformedLiteral = originalLiteral;
+            console.log(optionsMap.get(node.tag.name));
 
             ranges.push(literalStart, literalEnd, transformedLiteral);
           }
@@ -89,15 +89,41 @@ const taggedTemplatePostCss = (options = {}) => {
 }
 
 /**
+ * PostCSS options recognized by this plugin. In particular, the `to`, `from`, and `map` options, if
+ * specified, will be ignored.
+ *
+ * @typedef PostcssOptions
+ *
+ * @property {(import('postcss').Syntax|import('postcss').Parser)} [parser] - PostCSS parser
+ * used to generate AST from a string.
+ *
+ * @property {(import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] - PostCSS
+ * stringifier used to generate a string from an AST.
+ *
+ * @property {(import('postcss').Syntax)} [syntax] - Syntax object defining both a parser and
+ * stringifier for PostCSS to use.
+ */
+
+/**
+ * PostCSS config resolved via {@link resolvePostcssConfig}.
+ *
+ * @typedef ResolvedPostcssConfig
+ *
+ * @property {PostcssOptions} [options] - PostCSS options to use.
+ *
+ * @property {(import('postcss').AcceptedPlugin[])} [plugins] - PostCSS plugins to use.
+ */
+
+/**
  * Create a map from tagged template literal name to the {@link PostcssConfig} object used to
  * transform that template literal's contents.
  *
  * @param {TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[]} pluginOptions - Plugin
  * options object received.
  *
- * @returns {Map<string, PostcssConfig>}
+ * @returns {Promise<Map<string, PostcssConfig>>}
  */
-const makeOptionsMap = (pluginOptions) => {
+const makeOptionsMap = async (pluginOptions) => {
   if (!Array.isArray(pluginOptions)) {
     pluginOptions = [pluginOptions];
   }
@@ -105,13 +131,14 @@ const makeOptionsMap = (pluginOptions) => {
   const optionsMap = new Map();
 
   for (const optionsObj of pluginOptions) {
-    // XXX: actually load PostCSS config here via postcss-load-config. This way we can cache it
-    // and not continuously reload the config during the source walk.
-    //
-    // For inline config, would like to run it also through postcss-load-config. Unfortunately, it
-    // doesn't know how to load from in-memory structure. Maybe use serialize-to-js to write the
-    // inline config as a js file that can be loaded from file system?
-    const postcssConfig = optionsObj.postcss;
+    let postcssConfig;
+
+    try {
+      postcssConfig = await resolvePostcssConfig(optionsObj.postcss);
+    }
+    catch (e) {
+      throw new TraceError(`PostCSS config missing for tag set ${optionsObj.tags}`, e);
+    }
 
     // Expand out for each tagged template literal name given in the current options instance.
     for (const tag of optionsObj.tags) {
@@ -124,6 +151,39 @@ const makeOptionsMap = (pluginOptions) => {
   }
 
   return optionsMap;
+};
+
+/**
+ * Takes the PostCSS config given in the options passed to this plugin and resolves it to a set of
+ * PostCSS options and plugins. If a config isn't given, then one will be loaded via
+ * postcss-load-config.
+ *
+ * @param {PostcssConfig} postcssConfig - A PostCSS config set in the options passed to this plugin.
+ *
+ * @returns {Promise<ResolvedPostcssConfig>} A promise that resolves to an object specifying the
+ * PostCSS options and plugins specified by the given config (or the one loaded by
+ * postcss-load-config if a config wasn't given).
+ */
+const resolvePostcssConfig = async (postcssConfig) => {
+  const acceptedOptions = ['parser', 'stringifier', 'syntax'];
+
+  if (postcssConfig) {
+    const {
+      plugins = [],
+      ...options
+    } = postcssConfig;
+
+    return {
+      plugins,
+      options: pick(options, acceptedOptions)
+    }
+  }
+
+  const loadResult = await postcssrc();
+  return {
+    plugins: loadResult.plugins,
+    options: pick(loadResult.options, acceptedOptions)
+  };
 };
 
 export default taggedTemplatePostCss;

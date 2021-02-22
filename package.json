@@ -24,9 +24,11 @@
   "dependencies": {
     "@rollup/pluginutils": "^4.1.0",
     "acorn-walk": "^8.0.2",
+    "lodash-es": "^4.17.21",
     "postcss-load-config": "^3.0.1",
     "ranges-apply": "^5.0.5",
-    "ranges-push": "^5.0.5"
+    "ranges-push": "^5.0.5",
+    "trace-error": "^1.0.3"
   },
   "devDependencies": {
     "postcss": "^8.2.6",
