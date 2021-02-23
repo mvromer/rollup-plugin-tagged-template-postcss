@@ -1,6 +1,6 @@
 import { simple as simpleWalk } from 'acorn-walk';
 import { pick } from 'lodash-es';
-import postcss from 'postcss';
+//import postcss from 'postcss';
 import postcssrc from 'postcss-load-config';
 import { Ranges } from 'ranges-push';
 import { rApply as applyRanges } from 'ranges-apply';
@@ -86,7 +86,7 @@ const taggedTemplatePostCss = (options = {}) => {
       };
     }
   };
-}
+};
 
 /**
  * PostCSS options recognized by this plugin. In particular, the `to`, `from`, and `map` options, if
@@ -176,7 +176,7 @@ const resolvePostcssConfig = async (postcssConfig) => {
     return {
       plugins,
       options: pick(options, acceptedOptions)
-    }
+    };
   }
 
   const loadResult = await postcssrc();
