@@ -1,6 +1,6 @@
 import { simple as simpleWalk } from 'acorn-walk';
 import { pick } from 'lodash-es';
-//import postcss from 'postcss';
+import postcss from 'postcss';
 import postcssrc from 'postcss-load-config';
 import { Ranges } from 'ranges-push';
 import { rApply as applyRanges } from 'ranges-apply';
@@ -58,27 +58,45 @@ const taggedTemplatePostCss = (options = {}) => {
       }
 
       const optionsMap = await makeOptionsMap(options);
-      const transformRanges = new Ranges();
+      const transformTargets = [];
       const ast = this.parse(code);
       const baseWalker = undefined;
 
+      // Walk the AST and gather the contents of each tagged template literal that will be processed
+      // with PostCSS. Since acorn-walk doesn't support async callbacks, we just gather start/end
+      // indices and the original template literal contents during the walk. Afterward, we do the
+      // PostCSS transformation.
       simpleWalk(ast, {
-        TaggedTemplateExpression(node, ranges) {
+        TaggedTemplateExpression(node, targets) {
           if (optionsMap.has(node.tag.name)) {
             // NOTE: Offset the start/end by +/-1 because we don't want to include the backtick
             // characters when we extract the template literal's contents.
             const literalStart = node.quasi.start + 1;
             const literalEnd = node.quasi.end - 1;
-            const originalLiteral = code.substring(literalStart, literalEnd);
 
-            // XXX: Get options from map or load if they don't exist. Pass to PostCSS.
-            const transformedLiteral = originalLiteral;
-            console.log(optionsMap.get(node.tag.name));
-
-            ranges.push(literalStart, literalEnd, transformedLiteral);
+            targets.push({
+              start: literalStart,
+              end: literalEnd,
+              literalContents: code.substring(literalStart, literalEnd),
+              postcssConfig: optionsMap.get(node.tag.name)
+            });
           }
         }
-      }, baseWalker, transformRanges);
+      }, baseWalker, transformTargets);
+
+      // Transform each target with PostCSS.
+      const transformRanges = new Ranges();
+      for (const target of transformTargets) {
+        const postcssOptions = Object.assign({
+          from: id,
+          to: id
+        }, target.postcssConfig.options);
+
+        const postcssPlugins = target.postcssConfig.plugins;
+        const postcssResult = await postcss(postcssPlugins).process(target.literalContents, postcssOptions);
+        // XXX: need to figure out what other escaping rules are necessary.
+        transformRanges.push(target.start, target.end, postcssResult.css.replace(/`/g, '\\`'));
+      }
 
       return {
         code: applyRanges(code, transformRanges.current()),
@@ -87,6 +105,23 @@ const taggedTemplatePostCss = (options = {}) => {
     }
   };
 };
+
+/**
+ * Template literal contents targeted for transformation via PostCSS.
+ *
+ * @typedef TransformTarget
+ *
+ * @property {number} start - Index in a code string pointing to the start of the template literal
+ * contents to transform.
+ *
+ * @property {number} end - Index in a code string pointing to one past the end of the template
+ * literal contents to transform.
+ *
+ * @property {string} literalContents - Contents of the template literal to transform.
+ *
+ * @property {ResolvedPostcssConfig} postcssConfig - Resolved PostCSS config used to transform the
+ * template literal contents.
+ */
 
 /**
  * PostCSS options recognized by this plugin. In particular, the `to`, `from`, and `map` options, if
