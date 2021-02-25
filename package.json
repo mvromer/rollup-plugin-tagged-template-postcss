@@ -23,6 +23,7 @@
   },
   "homepage": "https://github.com/mvromer/rollup-plugin-tagged-template-postcss#readme",
   "dependencies": {
+    "@arrows/composition": "^1.2.2",
     "@rollup/pluginutils": "^4.1.0",
     "acorn-walk": "^8.0.2",
     "lodash-es": "^4.17.21",
@@ -43,5 +44,8 @@
   "peerDependencies": {
     "postcss": "^8.0.0",
     "rollup": "^2.0.0"
+  },
+  "engines": {
+    "node": ">=14.15.4"
   }
 }
