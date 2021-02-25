@@ -24,7 +24,7 @@ const escapeBacktick = (contents) => contents.replace(/`/g, '\\`');
  */
 const escapePlaceholderOpening = (contents) => contents.replace(/\$\{/g, '\\${');
 
-/** @type {import('./index.js').TransformFunc} */
+/** @type {import('./plugin.js').TransformFunc} */
 export const standardOutputTransform = pipe(
   // Backslash escaping comes first so we don't we don't inadvertently escape any escape sequences
   // subsequent functions in the pipeline add to the transformed output.
