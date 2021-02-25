@@ -1,4 +1,5 @@
 import { simple as simpleWalk } from 'acorn-walk';
+import { pipe } from '@arrows/composition';
 import { pick } from 'lodash-es';
 import postcss from 'postcss';
 import postcssrc from 'postcss-load-config';
@@ -6,24 +7,7 @@ import { Ranges } from 'ranges-push';
 import { rApply as applyRanges } from 'ranges-apply';
 import { createFilter } from '@rollup/pluginutils';
 import TraceError from 'trace-error';
-
-/**
- * PostCSS config object. Mirrors what you'd put in a postcss.config.js file. The `to`, `from`, and
- * `map` PostCSS options will be ignored.
- *
- * @typedef PostcssConfig
- *
- * @property {(import('postcss').Syntax|import('postcss').Parser)} [parser] - PostCSS parser
- * used to generate AST from a string.
- *
- * @property {(import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] - PostCSS
- * stringifier used to generate a string from an AST.
- *
- * @property {(import('postcss').Syntax)} [syntax] - Syntax object defining both a parser and
- * stringifier for PostCSS to use.
- *
- * @property {(import('postcss').AcceptedPlugin[])} [plugins] - PostCSS plugins to use.
- */
+import { standardOutputTransform } from './transforms.js';
 
 /**
  * Options used to configure rollup-plugin-tagged-template-postcss.
@@ -37,10 +21,49 @@ import TraceError from 'trace-error';
  * @property {string[]} tags - List of tagged template literal names whose contents will be
  * transformed using PostCSS.
  *
- * @property {PostcssConfig} [postcss] - PostCSS config used to transform the contents of the
- * tagged template literals specified by `tags`. If not given, this will use
+ * @property {PostcssConfig} [postcss] - PostCSS config used to transform the contents of the tagged
+ * template literals specified by `tags`. If not given, this will use
  * [postcss-load-config](https://github.com/postcss/postcss-load-config#readme) to load a PostCSS
  * config from one of its supported locations.
+ *
+ * @property {TransformFunc[]} [outputTransforms] Additional transform functions to apply to the
+ * tagged template literal's contents AFTER it has been processed by PostCSS. Transform functions
+ * are applied in the order in which they appear.
+ *
+ * If this is not given, a standard transform function is applied that 1) escapes each backslash,
+ * 2) escapes each backtick, and 3) escapes each dollar sign followed by an open curly brace (which
+ * is inferred to be the start of a template literal placeholder).
+ *
+ * If you want to apply no transforms, then set this to an empty array.
+ */
+
+/**
+ * PostCSS config object. Mirrors what you'd put in a postcss.config.js file. The `to`, `from`, and
+ * `map` PostCSS options will be ignored.
+ *
+ * @typedef PostcssConfig
+ *
+ * @property {(import('postcss').Syntax|import('postcss').Parser)} [parser] PostCSS parser used to
+ * generate AST from a string.
+ *
+ * @property {(import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] PostCSS
+ * stringifier used to generate a string from an AST.
+ *
+ * @property {(import('postcss').Syntax)} [syntax] Syntax object defining both a parser and
+ * stringifier for PostCSS to use.
+ *
+ * @property {(import('postcss').AcceptedPlugin[])} [plugins] PostCSS plugins to use.
+ */
+
+/**
+ * Transform function applied to the output of PostCSS.
+ *
+ * @callback TransformFunc
+ *
+ * @param {string} transformedLiteralContents Contents of a tagged template literal that has
+ * already been transformed by PostCSS and any prior transform functions.
+ *
+ * @returns {string} The template literal contents with this function's transformations applied.
  */
 
 /**
@@ -57,7 +80,8 @@ const taggedTemplatePostCss = (options = {}) => {
         return;
       }
 
-      const optionsMap = await makeOptionsMap(options);
+      const tagMap = await makeTagMap(options);
+      /** @type {TransformTarget[]} */
       const transformTargets = [];
       const ast = this.parse(code);
       const baseWalker = undefined;
@@ -68,7 +92,7 @@ const taggedTemplatePostCss = (options = {}) => {
       // PostCSS transformation.
       simpleWalk(ast, {
         TaggedTemplateExpression(node, targets) {
-          if (optionsMap.has(node.tag.name)) {
+          if (tagMap.has(node.tag.name)) {
             // NOTE: Offset the start/end by +/-1 because we don't want to include the backtick
             // characters when we extract the template literal's contents.
             const literalStart = node.quasi.start + 1;
@@ -78,24 +102,28 @@ const taggedTemplatePostCss = (options = {}) => {
               start: literalStart,
               end: literalEnd,
               literalContents: code.substring(literalStart, literalEnd),
-              postcssConfig: optionsMap.get(node.tag.name)
+              processTagConfig: tagMap.get(node.tag.name)
             });
           }
         }
       }, baseWalker, transformTargets);
 
-      // Transform each target with PostCSS.
+      // Transform each target.
       const transformRanges = new Ranges();
       for (const target of transformTargets) {
         const postcssOptions = Object.assign({
           from: id,
           to: id
-        }, target.postcssConfig.options);
+        }, target.processTagConfig.postcssConfig.options);
 
-        const postcssPlugins = target.postcssConfig.plugins;
-        const postcssResult = await postcss(postcssPlugins).process(target.literalContents, postcssOptions);
-        // XXX: need to figure out what other escaping rules are necessary.
-        transformRanges.push(target.start, target.end, postcssResult.css.replace(/`/g, '\\`'));
+        const postcssResult = await postcss(target.processTagConfig.postcssConfig.plugins)
+          .process(target.literalContents, postcssOptions);
+
+        transformRanges.push(
+          target.start,
+          target.end,
+          pipe.now(postcssResult.css, ...target.processTagConfig.outputTransforms)
+        );
       }
 
       return {
@@ -111,16 +139,39 @@ const taggedTemplatePostCss = (options = {}) => {
  *
  * @typedef TransformTarget
  *
- * @property {number} start - Index in a code string pointing to the start of the template literal
+ * @property {number} start Index in a code string pointing to the start of the template literal
  * contents to transform.
  *
- * @property {number} end - Index in a code string pointing to one past the end of the template
+ * @property {number} end Index in a code string pointing to one past the end of the template
  * literal contents to transform.
  *
- * @property {string} literalContents - Contents of the template literal to transform.
+ * @property {string} literalContents Contents of the template literal to transform.
  *
- * @property {ResolvedPostcssConfig} postcssConfig - Resolved PostCSS config used to transform the
+ * @property {ProcessTagConfig} processTagConfig Config specifying how to transform the template
+ * literal's contents.
+ */
+
+/**
+ * Specifies how to transform the contents of a tagged template literal using PostCSS and additional
+ * transformers.
+ *
+ * @typedef ProcessTagConfig
+ *
+ * @property {ResolvedPostcssConfig} postcssConfig Resolved PostCSS config used to transform the
  * template literal contents.
+ *
+ * @property {TransformFunc[]} outputTransforms Transform functions applied to the template literal
+ * contents after is has been transformed by PostCSS.
+ */
+
+/**
+ * PostCSS config resolved via {@link resolvePostcssConfig}.
+ *
+ * @typedef ResolvedPostcssConfig
+ *
+ * @property {PostcssOptions} [options] PostCSS options to use.
+ *
+ * @property {(import('postcss').AcceptedPlugin[])} [plugins] PostCSS plugins to use.
  */
 
 /**
@@ -129,41 +180,31 @@ const taggedTemplatePostCss = (options = {}) => {
  *
  * @typedef PostcssOptions
  *
- * @property {(import('postcss').Syntax|import('postcss').Parser)} [parser] - PostCSS parser
+ * @property {(import('postcss').Syntax|import('postcss').Parser)} [parser] PostCSS parser
  * used to generate AST from a string.
  *
- * @property {(import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] - PostCSS
+ * @property {(import('postcss').Syntax|import('postcss').Stringifier)} [stringifier] PostCSS
  * stringifier used to generate a string from an AST.
  *
- * @property {(import('postcss').Syntax)} [syntax] - Syntax object defining both a parser and
+ * @property {(import('postcss').Syntax)} [syntax] Syntax object defining both a parser and
  * stringifier for PostCSS to use.
  */
 
 /**
- * PostCSS config resolved via {@link resolvePostcssConfig}.
- *
- * @typedef ResolvedPostcssConfig
- *
- * @property {PostcssOptions} [options] - PostCSS options to use.
- *
- * @property {(import('postcss').AcceptedPlugin[])} [plugins] - PostCSS plugins to use.
- */
-
-/**
- * Create a map from tagged template literal name to the {@link PostcssConfig} object used to
+ * Create a map from tagged template literal name to the {@link ProcessTagConfig} object used to
  * transform that template literal's contents.
  *
- * @param {TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[]} pluginOptions - Plugin
+ * @param {TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[]} pluginOptions Plugin
  * options object received.
  *
- * @returns {Promise<Map<string, PostcssConfig>>}
+ * @returns {Promise<Map<string, ProcessTagConfig>>}
  */
-const makeOptionsMap = async (pluginOptions) => {
+const makeTagMap = async (pluginOptions) => {
   if (!Array.isArray(pluginOptions)) {
     pluginOptions = [pluginOptions];
   }
 
-  const optionsMap = new Map();
+  const tagMap = new Map();
 
   for (const optionsObj of pluginOptions) {
     let postcssConfig;
@@ -175,17 +216,22 @@ const makeOptionsMap = async (pluginOptions) => {
       throw new TraceError(`PostCSS config missing for tag set ${optionsObj.tags}`, e);
     }
 
+    const processTagConfig = {
+      postcssConfig,
+      outputTransforms: optionsObj.outputTransforms || [standardOutputTransform]
+    };
+
     // Expand out for each tagged template literal name given in the current options instance.
     for (const tag of optionsObj.tags) {
-      if (optionsMap.has(tag)) {
+      if (tagMap.has(tag)) {
         throw new Error(`PostCSS config already defined for tagged template literal ${tag}`);
       }
 
-      optionsMap.set(tag, postcssConfig);
+      tagMap.set(tag, processTagConfig);
     }
   }
 
-  return optionsMap;
+  return tagMap;
 };
 
 /**
