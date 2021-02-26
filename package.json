@@ -37,7 +37,9 @@
     "chai-as-promised": "^7.1.1",
     "eslint": "^7.20.0",
     "eslint-plugin-mocha": "^8.0.0",
+    "fast-glob": "^3.2.5",
     "mocha": "^8.3.0",
+    "normalize-path": "^3.0.0",
     "postcss": "^8.2.6",
     "rollup": "^2.39.0"
   },

@@ -1,0 +1,1 @@
+Example \t\t string
