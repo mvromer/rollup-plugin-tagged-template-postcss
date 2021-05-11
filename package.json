@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "test": "mocha",
+    "update-snaps": "mocha --update",
     "lint": "eslint src/ test/"
   },
   "repository": {
@@ -41,7 +42,8 @@
     "mocha": "^8.3.0",
     "normalize-path": "^3.0.0",
     "postcss": "^8.2.6",
-    "rollup": "^2.39.0"
+    "rollup": "^2.39.0",
+    "verbatim-shot": "^0.1.1"
   },
   "peerDependencies": {
     "postcss": "^8.0.0",
