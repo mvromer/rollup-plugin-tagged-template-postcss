@@ -34,19 +34,24 @@
     "trace-error": "^1.0.3"
   },
   "devDependencies": {
+    "@dword-design/chdir": "^2.0.2",
+    "@rollup/plugin-node-resolve": "^13.0.0",
+    "autoprefixer": "^10.2.5",
     "chai": "^4.3.0",
     "chai-as-promised": "^7.1.1",
     "eslint": "^7.20.0",
     "eslint-plugin-mocha": "^8.0.0",
     "fast-glob": "^3.2.5",
+    "lit": "*",
     "mocha": "^8.3.0",
     "normalize-path": "^3.0.0",
     "postcss": "^8.2.6",
     "rollup": "^2.39.0",
+    "tailwindcss": "^2.1.2",
     "verbatim-shot": "^0.1.1"
   },
   "peerDependencies": {
-    "postcss": "^8.0.0",
+    "postcss": "^8.2.15",
     "rollup": "^2.0.0"
   },
   "engines": {

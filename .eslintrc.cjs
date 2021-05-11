@@ -1,5 +1,6 @@
 module.exports = {
   env: {
+    browser: true,
     node: true,
     es2021: true,
     mocha: true
@@ -16,7 +17,9 @@ module.exports = {
     semi: ['error', 'always'],
     quotes: ['error', 'single', { 'allowTemplateLiterals': true }],
     'space-before-function-paren': ['error', {
-      anonymous: 'always'
+      anonymous: 'always',
+      named: 'never',
+      asyncArrow: 'always'
     }]
   }
 };
