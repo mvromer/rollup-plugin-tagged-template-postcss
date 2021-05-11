@@ -16,13 +16,16 @@ describe('Lit with TailwindCSS', function () {
       const scenarioDir = path.dirname(fileURLToPath(import.meta.url));
 
       await chdir(scenarioDir, async () => {
+        // NOTE: With the current (2.1.2) version of TailwindCSS, this will log a warning to the
+        // console about using a preview feature (JIT mode). Tailwind doesn't provide a way to
+        // suppress these warnings, so we live with it for now since JIT mode helps keep the test
+        // snapshot output to a more reasonable size.
         const bundle = await rollup.rollup({
           input: 'index.js',
           plugins: [
             nodeResolve(),
             taggedTemplatePostCss({
               include: ['index.js'],
-              exclude: [],
               tags: ['css'],
               postcss: {
                 plugins: [
