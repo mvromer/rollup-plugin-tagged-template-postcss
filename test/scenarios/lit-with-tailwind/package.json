@@ -1,0 +1,16 @@
+{
+  "name": "lit-with-tailwind",
+  "version": "1.0.0",
+  "main": "index.js",
+  "module": "index.js",
+  "type": "module",
+  "dependencies": {
+    "lit": "2.0.0-rc.2"
+  },
+  "devDependencies": {
+    "autoprefixer": "10.2.5",
+    "rollup": "2.47.0",
+    "rollup-plugin-postcss": "4.0.0",
+    "tailwindcss": "2.1.2"
+  }
+}
