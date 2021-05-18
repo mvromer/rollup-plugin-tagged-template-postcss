@@ -67,7 +67,7 @@ import { standardOutputTransform } from './transforms.js';
 /**
  * @type {import('rollup').PluginImpl<(TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[])>}
  */
-export const taggedTemplatePostCss = (options = {}) => {
+export const taggedTemplatePostcss = (options = {}) => {
   const filter = createFilter(options.include, options.exclude);
 
   return {
