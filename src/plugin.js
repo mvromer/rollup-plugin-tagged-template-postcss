@@ -14,7 +14,7 @@ import { standardOutputTransform } from './transforms.js';
  *
  * @property {string[]} include - List of patterns of source files to process.
  *
- * @property {string[]} exclude - List of patterns of sources file exclude from processing.
+ * @property {string[]} [exclude] - List of patterns of sources file exclude from processing.
  *
  * @property {string[]} tags - List of tagged template literal names whose contents will be
  * transformed using PostCSS.
