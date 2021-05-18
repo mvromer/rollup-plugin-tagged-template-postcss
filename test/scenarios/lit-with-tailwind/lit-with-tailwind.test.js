@@ -7,7 +7,7 @@ import { nodeResolve } from '@rollup/plugin-node-resolve';
 import * as rollup from 'rollup';
 import tailwindcss from 'tailwindcss';
 
-import taggedTemplatePostCss from '../../../src/index.js';
+import taggedTemplatePostcss from '../../../src/index.js';
 
 describe('Lit with TailwindCSS', function () {
   context('when Lit component uses Tailwind in styles', function () {
@@ -24,7 +24,7 @@ describe('Lit with TailwindCSS', function () {
           input: 'index.js',
           plugins: [
             nodeResolve(),
-            taggedTemplatePostCss({
+            taggedTemplatePostcss({
               include: ['index.js'],
               tags: ['css'],
               postcss: {

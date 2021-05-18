@@ -14,7 +14,7 @@ import { standardOutputTransform } from './transforms.js';
  *
  * @property {string[]} include - List of patterns of source files to process.
  *
- * @property {string[]} exclude - List of patterns of sources file exclude from processing.
+ * @property {string[]} [exclude] - List of patterns of sources file exclude from processing.
  *
  * @property {string[]} tags - List of tagged template literal names whose contents will be
  * transformed using PostCSS.
@@ -67,7 +67,7 @@ import { standardOutputTransform } from './transforms.js';
 /**
  * @type {import('rollup').PluginImpl<(TaggedTemplatePostcssOptions|TaggedTemplatePostcssOptions[])>}
  */
-export const taggedTemplatePostCss = (options = {}) => {
+export const taggedTemplatePostcss = (options = {}) => {
   const filter = createFilter(options.include, options.exclude);
 
   return {
