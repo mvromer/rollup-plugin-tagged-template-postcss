@@ -5,6 +5,9 @@
   "main": "./src/index.js",
   "exports": "./src/index.js",
   "type": "module",
+  "files": [
+    "src"
+  ],
   "scripts": {
     "test": "mocha",
     "update-snaps": "mocha --update",
