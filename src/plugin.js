@@ -82,7 +82,10 @@ export const taggedTemplatePostcss = (options = {}) => {
         this.parse,
         findTransformTargets(code, await makeTagMap(options)),
         makeTransformRanges(id),
-        (transformRanges) => applyRanges(code, transformRanges.current())
+        ({ transformRanges, dependencies }) => {
+          dependencies.forEach(dep => this.addWatchFile(dep));
+          return applyRanges(code, transformRanges.current());
+        }
       );
 
       return {

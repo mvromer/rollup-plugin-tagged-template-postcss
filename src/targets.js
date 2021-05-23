@@ -97,6 +97,13 @@ export const findTransformTargets = (code, tagMap) => (ast) => {
  * built from the given array of {@link TransformTarget} objects. Each {@link Range} specifies the
  * location of a tagged template literal's contents in the module code received from Rollup along
  * with the transformed contents to replace it with.
+ *
+ * @returns {Promise<Object>} Promise resolving to an object containing both a {@link Ranges} object
+ * built from the given array of {@link TransformTarget} objects and an array of dependencies. Each
+ * {@link Range} specifies the location of a tagged template literal's contents in the module code
+ * received from Rollup along with the transformed contents to replace it with as returned by
+ * PostCSS. The dependencies arrays contain the file and directory paths identified by any of the
+ * configured PostCSS plugins as dependencies of the transformed tagged template literal contents.
  */
 
 /**
@@ -110,6 +117,7 @@ export const findTransformTargets = (code, tagMap) => (ast) => {
  */
 export const makeTransformRanges = (moduleId) => async (transformTargets) => {
   const transformRanges = new Ranges();
+  const dependencies = new Set();
 
   for (const target of transformTargets) {
     const postcssOptions = Object.assign({
@@ -125,7 +133,26 @@ export const makeTransformRanges = (moduleId) => async (transformTargets) => {
       target.end,
       pipe.now(postcssResult.css, ...target.processTagConfig.outputTransforms)
     );
+
+    // Get all the dependencies identified by PostCSS. Historically, directory dependencies have
+    // been marked by some plugins with the 'context-dependency' message type (and in that case,
+    // they use the file property to signify the path). We're lucky in that Rollup's addWatchFile
+    // utility function can take paths to both files and directories.
+    //
+    // Latest PostCSS plugin message guidance here:
+    // https://github.com/postcss/postcss/blob/main/docs/guidelines/plugin.md
+    for (const message of postcssResult.messages) {
+      if (message.type === 'dependency' || message.type === 'context-dependency') {
+        dependencies.add(message.file);
+      }
+      else if (message.type === 'dir-dependency') {
+        dependencies.add(message.dir);
+      }
+    }
   }
 
-  return transformRanges;
+  return {
+    transformRanges,
+    dependencies: Array.from(dependencies)
+  };
 };
