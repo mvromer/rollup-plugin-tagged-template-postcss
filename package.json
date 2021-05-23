@@ -1,6 +1,6 @@
 {
   "name": "rollup-plugin-tagged-template-postcss",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Process contents of tagged template literals with PostCSS during Rollup build.",
   "main": "./src/index.js",
   "exports": "./src/index.js",
