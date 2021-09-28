@@ -2,6 +2,8 @@
 
 Process the contents of tagged template literals with PostCSS during a Rollup build.
 
+> **NOTE:** This repository has been archived. Further development on this plugin can be found [here](https://github.com/mvromer/tagged-template-postcss).
+
 ## How it works
 
 For each input file processed by Rollup, this plugin will walk the file's AST (abstract syntax
